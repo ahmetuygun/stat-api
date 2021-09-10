@@ -1,5 +1,6 @@
 package com.hellofresh.challange.demo.controller;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -8,6 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @RestController
@@ -18,6 +20,7 @@ public class StatsController {
     Predicate<Long> last60Second = item -> item >= System.currentTimeMillis() - 60000;
     ConcurrentHashMap<Long, DoubleSummaryStatistics> xMap = new ConcurrentHashMap<>();
     ConcurrentHashMap<Long, IntSummaryStatistics> yMap = new ConcurrentHashMap<>();
+    org.slf4j.Logger logger = LoggerFactory.getLogger(StatsController.class);
 
     @PostMapping("/event")
     public ResponseEntity event(@RequestBody String events) {
@@ -27,10 +30,10 @@ public class StatsController {
         }
 
         Runnable x = new XRunnable(events);
-        new Thread(x).start();
-
         Runnable y = new YRunnable(events);
         new Thread(y).start();
+        new Thread(x).start();
+
 
         return new ResponseEntity<>("Success", HttpStatus.ACCEPTED);
     }
@@ -77,25 +80,7 @@ public class StatsController {
         return ResponseEntity.ok(stringBuilder.toString());
     }
 
-    public class YRunnable implements Runnable {
 
-        String events =  null;
-        public YRunnable(String events) {
-            this.events = events;
-        }
-
-        public void run() {
-            Map<Long, IntSummaryStatistics> yInner = Arrays.stream(events.split("\\s+"))
-                    .map(elem -> elem.split(","))
-                    .collect(Collectors.groupingBy(e -> Long.parseLong(e[0]), Collectors.summarizingInt(e -> Integer.parseInt(e[2]))));
-            yInner.forEach((k, v) -> {
-                if (yMap.get(k) != null)
-                    v.combine(yMap.get(k));
-                else
-                    yMap.put(k, v);
-            });
-        }
-    }
     public class XRunnable implements Runnable {
 
         String events =  null;
@@ -104,9 +89,33 @@ public class StatsController {
         }
 
         public void run() {
+            logger.info("x started");
+            Map<Long, DoubleSummaryStatistics> xInner = Arrays.stream(events.split("\\s+"))
+                    .map(elem -> elem.split(","))
+                    .collect(Collectors.groupingBy(e -> Long.parseLong(e[0]), Collectors.summarizingDouble(e -> Double.parseDouble(e[1]))));
+
+            xInner.forEach((k, v) -> {
+                if (xMap.get(k) != null)
+                    v.combine(xMap.get(k));
+                else
+                    xMap.put(k, v);
+            });
+        }
+    }
+
+    public class YRunnable implements Runnable {
+
+        String events =  null;
+        public YRunnable(String events) {
+            this.events = events;
+        }
+
+        public void run() {
+            logger.info("y started");
             Map<Long, IntSummaryStatistics> yInner = Arrays.stream(events.split("\\s+"))
                     .map(elem -> elem.split(","))
                     .collect(Collectors.groupingBy(e -> Long.parseLong(e[0]), Collectors.summarizingInt(e -> Integer.parseInt(e[2]))));
+
             yInner.forEach((k, v) -> {
                 if (yMap.get(k) != null)
                     v.combine(yMap.get(k));
